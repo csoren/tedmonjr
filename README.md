@@ -21,10 +21,10 @@ The following TEDMON commands are available. Please consult TEDMON documentation
 |R| N/A |Display registers|
 |T|start thru to|Copy memory range|
 |X| N/A |Exit|
-|$| N/A |Evaluate hexadecimal number|
-|+| N/A |Evaluate decimal number|
-|&| N/A |Evaluate octal number|
-|%| N/A |Evaluate binary number|
+|$| number |Evaluate hexadecimal number|
+|+| number |Evaluate decimal number|
+|&| number |Evaluate octal number|
+|%| number |Evaluate binary number|
 |.|address instruction|Alter disassembly|
 | >|address bytes|Alter memory|
 |;|registers|Alter registers|
