@@ -1,0 +1,82 @@
+; Copyright (c) 2023 Carsten Elton Sørensen
+; 
+; Permission is hereby granted, free of charge, to any person obtaining a copy
+; of this software and associated documentation files (the "Software"), to deal
+; in the Software without restriction, including without limitation the rights
+; to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+; copies of the Software, and to permit persons to whom the Software is
+; furnished to do so, subject to the following conditions:
+; 
+; The above copyright notice and this permission notice shall be included in all
+; copies or substantial portions of the Software.
+; 
+; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+; IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+; FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+; AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+; LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+; SOFTWARE.
+
+		INCLUDE	"monitorvectors.i"
+		INCLUDE "declare.src"
+		INCLUDE "zeropage.i"
+		INCLUDE	"f256.i"
+
+		SECTION	"tedmon",CODE[MONITOR_BASE]
+
+ZeroPage	DS	256	
+Stack		DS	256	
+
+		SECTION	"EntryVectors",CODE[MONITOR_VECTOR_BASE]
+	
+VECTOR:		MACRO
+		DW	\1
+		ENDM
+
+MonitorVectors:
+		VECTOR	Initialize
+		VECTOR	break
+		VECTOR	NMI
+		VECTOR	call
+		VECTOR	text_SetLUT
+		VECTOR	text_SetFont
+		VECTOR	text_Enable
+		VECTOR	text_Disable
+		VECTOR	text_ClearScreen
+		VECTOR	text_CharOut
+		VECTOR	text_EnableCursor
+		VECTOR	text_DisableCursor
+		VECTOR	kbd_ReadKeyCode
+		VECTOR	kbd_EditLine
+
+NMI:		rts
+
+Initialize:
+		; variable initialization
+		lda	#$80
+		sta	kbd_Sending
+		stz	kbd_State
+		stz	kbd_Shift
+		stz	mode ; 40 col
+		stz	param
+
+		rts
+
+
+		INCLUDE	"monitor0.src"
+		INCLUDE	"monitor1.src"
+		INCLUDE	"monitor2.src"
+		INCLUDE	"monitor3.src"
+		INCLUDE	"monitor4.src"
+		INCLUDE	"monitor5.src"
+		;INCLUDE	"monitor6.src"
+
+		INCLUDE "keyboard.src"
+		INCLUDE "text.src"
+		INCLUDE "storage.src"
+		INCLUDE "replacements.src"
+
+
+		SECTION	"Trampoline",CODE[TRAMPOLINE_BASE]
+		INCBIN	"../trampoline.bin"

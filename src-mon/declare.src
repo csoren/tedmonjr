@@ -1,0 +1,45 @@
+;	.page
+;	.subttl  MONITOR DECLARATIONS  (03/01/85)
+
+; constants
+
+cr	= $0d
+
+
+
+; system entrys
+
+;system_vector	= $0a00	;return vector to os
+
+
+;mmucr	= $ff00		;mmu configuration register
+
+basin EQUS "kbd_EditLine" ; $ffcf		;kernal jump table
+;bsout = $ffd2 ; implemented elsewhere
+stop EQUS "kbd_Stop" ; $ffe1
+
+; These lines must be kept in sync with trampolinevectors.i
+TRAMPOLINE_VECTOR_SIZE	EQU	3
+_gosub EQU TRAMPOLINE_BASE
+_goto EQU TRAMPOLINE_BASE+TRAMPOLINE_VECTOR_SIZE
+
+;primm = $ff7d ; implemented elsewhere
+;_fetch	= $ff74	; implemented elsewhere
+;_stash	= $ff77 ; implemented elsewhere
+
+
+
+; -- Unused kernal routines --
+
+;chkin	= $ffc6
+;chkout	= $ffc9
+;close	= $ffc3
+;clrch	= $ffcc
+;open	= $ffc0
+;setlfs	= $ffba
+;setnam	= $ffbd
+;setbnk	= $ff68
+;_load	= $ffd5
+;_save	= $ffd8
+;_cmpar	= $ff7a
+;_setmsg	= $ff90

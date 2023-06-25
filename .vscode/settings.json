@@ -1,0 +1,42 @@
+{
+  "files.associations": {
+	"*.c": "c",
+	"*.s": "asm.6502",
+	"*.i": "asm.6502",
+	"*.src": "asm.6502",
+	".justfile": "makefile",
+	"Makefile": "makefile"
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/CMakeFiles": true,
+    "**/cmake_install.cmake": true,
+    "**/*.a": true,
+    "build-release/": true,
+    "build/": true,
+    ".deps/": true,
+    ".deps-release/": true,
+    "*.pgz": true
+  },
+  "cmake.configureOnOpen": false,
+  "[asm.6502]": {
+    "editor.tabSize": 8,
+    "editor.insertSpaces": false,
+    "editor.inlineSuggest.enabled": false,
+    "editor.tabCompletion": "off",
+    "editor.quickSuggestions": {
+        "other": "off",
+        "comments": "off",
+        "strings": "off"
+    }
+  },
+  "[c]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": false
+  },
+  "editor.detectIndentation": false
+}

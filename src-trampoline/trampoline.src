@@ -1,0 +1,242 @@
+; Copyright (c) 2023 Carsten Elton Sørensen
+; 
+; Permission is hereby granted, free of charge, to any person obtaining a copy
+; of this software and associated documentation files (the "Software"), to deal
+; in the Software without restriction, including without limitation the rights
+; to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+; copies of the Software, and to permit persons to whom the Software is
+; furnished to do so, subject to the following conditions:
+; 
+; The above copyright notice and this permission notice shall be included in all
+; copies or substantial portions of the Software.
+; 
+; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+; IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+; FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+; AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+; LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+; SOFTWARE.
+
+		INCLUDE	"f256.i"
+		INCLUDE "zeropage.i"
+		INCLUDE	"monitorvectors.i"
+		INCLUDE	"trampolinevectors.i"
+
+
+
+
+		SECTION	"Trampoline",CODE[TRAMPOLINE_BASE]
+
+; These lines must be kept in sync with declare.src and trampolinevectors.i
+TrampolineVectors:
+		jmp	LongJsr
+		jmp	LongJump
+		jmp	Initialize
+		; fall-through to Trampoline
+
+; ---------------------------------------------------------------------------
+; -- Call into monitor
+; -- Input:
+; --   A - argument
+; --   X - routine
+; -- Output:
+; --   A - result from routine
+; --   X - destroyed
+; ---------------------------------------------------------------------------
+Trampoline:
+		phy
+		php
+		sei
+
+		; save caller's A and X
+		phx
+		jsr	AddByteParameter	; store A
+		pla
+		jsr	AddByteParameter	; store X
+
+		; save caller's IO ctrl register on caller stack
+		lda	MMU_IO_CTRL
+		pha
+
+		ldy	MMU_MEM_CTRL	; keep user's mem ctrl in Y
+
+		lda	#MMU_ACT_LUT_3	; we want LUT #3
+		sta	MMU_MEM_CTRL	; activate LUT #3
+
+		; now in monitor land
+
+		lda	params+0
+		ldx	params+1
+		jsr	.call
+		stz	param
+
+		sty	MMU_MEM_CTRL
+		ply
+		sty	MMU_IO_CTRL
+
+		plp
+		ply
+		rts
+
+.call		jmp	(MONITOR_VECTOR_BASE,x)
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Initialize LUT #3 for monitor
+; -- Input:
+; --   A - monitor bank #
+; ---------------------------------------------------------------------------
+Initialize:
+		phx
+		phy
+
+		tay
+
+		; save call config
+		lda	MMU_MEM_CTRL
+		pha
+
+		; initialize MMU LUT 3
+		and	#MMU_ACT_LUT_MASK
+		ora	#MMU_EDIT_EN|MMU_EDIT_LUT_3
+		sta	MMU_MEM_CTRL
+
+		sty	MMU_EDIT_BASE+0
+		sty	MMU_EDIT_BASE+7
+
+		; restore user config
+		pla
+		sta	MMU_MEM_CTRL
+
+		ldx	#monitor_Initialize
+		jsr	Trampoline
+
+		ply
+		plx
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Add byte to parameter block
+; -- Input:
+; --   A - byte
+; -- Note:
+; --   Destroys X and Y
+; ---------------------------------------------------------------------------
+AddByteParameter:
+		; keep user's mem ctrl in X
+		ldx	MMU_MEM_CTRL
+
+		; switch to LUT #3
+		ldy	#MMU_ACT_LUT_3
+		sty	MMU_MEM_CTRL
+
+		; we're now in monitor land, store A in parameter block
+		ldy	param
+		sta	params,y
+		inc	param
+
+		; back to userland
+		stx	MMU_MEM_CTRL
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Long JSR and JMP
+; ---------------------------------------------------------------------------
+LongJump:
+		lda	#$4C	; JMP abs
+		bra	LongJsr\.entry
+LongJsr:
+		tsx
+		stx	monsp
+		lda	#$20	; JSR abs
+.entry		ldx	#13
+		jsr	.load
+
+		lda	sp
+		ldx	#1
+		jsr	.load
+		lda	flgs
+		ldx	#4
+		jsr	.load
+		lda	xr
+		ldx	#7
+		jsr	.load
+		lda	yr
+		ldx	#9
+		jsr	.load
+		lda	acc
+		ldx	#11
+		jsr	.load
+
+		ldx	pcl
+		ldy	pch
+
+		lda	pcb
+		sta	MMU_MEM_CTRL	; activate destination bank
+
+		stx	.jump+14
+		sty	.jump+15
+
+.jump		ldx	#$FF	; SP (1)
+		txs		; 2
+		lda	#$FF	; SR (4)
+		pha		; 5
+		ldx	#$FF	; X (7)
+		ldy	#$FF	; Y (9)
+		lda	#$FF	; A (11)
+		plp		; 12
+
+		jsr	$FFFF	; JSR (13), PC (14, 15)
+
+
+		php
+		phx
+		phy
+
+		; store SP, A
+		tsx
+		ldy	#MMU_ACT_LUT_3
+		sty	MMU_MEM_CTRL
+		sta	acc
+		stx	sp
+		ldy	pcb
+		sty	MMU_MEM_CTRL
+
+		; store X, Y
+		ply
+		plx
+
+		lda	#MMU_ACT_LUT_3
+		sta	MMU_MEM_CTRL
+
+		stx	xr
+		stx	yr
+
+		; store SR
+		ldy	pcb
+		sty	MMU_MEM_CTRL
+		plp
+
+		lda	#MMU_ACT_LUT_3
+		sta	MMU_MEM_CTRL
+		stx	flgs
+
+		ldx	monsp
+		txs
+
+		rts
+
+.load		ldy	pcb
+		sty	MMU_MEM_CTRL
+
+		sta	.jump,x
+
+		ldy	#MMU_ACT_LUT_3
+		sty	MMU_MEM_CTRL
+
+		rts
+

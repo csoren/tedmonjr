@@ -1,0 +1,275 @@
+; Copyright (c) 2023 Carsten Elton Sørensen
+; 
+; Permission is hereby granted, free of charge, to any person obtaining a copy
+; of this software and associated documentation files (the "Software"), to deal
+; in the Software without restriction, including without limitation the rights
+; to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+; copies of the Software, and to permit persons to whom the Software is
+; furnished to do so, subject to the following conditions:
+; 
+; The above copyright notice and this permission notice shall be included in all
+; copies or substantial portions of the Software.
+; 
+; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+; IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+; FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+; AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+; LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+; SOFTWARE.
+
+; Vectors in text_CharOut must be updated if these values change
+
+KEY_BACK	EQU	5
+KEY_TAB		EQU	9
+KEY_ENTER	EQU	13
+KEY_ESC		EQU	27
+KEY_LEFT	EQU	28
+KEY_RIGHT	EQU	29
+KEY_UP		EQU	30
+KEY_DOWN	EQU	31
+
+KEY_SHIFT	EQU	$81
+KEY_CTRL	EQU	0 ;$82
+KEY_ALT		EQU	0 ;$83
+KEY_OS		EQU	0 ;$84
+KEY_CAPS_LOCK	EQU	0 ;$85
+
+KEY_F1		EQU	0 ;$90
+KEY_F2		EQU	0 ;$91
+KEY_F3		EQU	0 ;$92
+KEY_F4		EQU	0 ;$93
+KEY_F5		EQU	0 ;$94
+KEY_F6		EQU	0 ;$95
+KEY_F7		EQU	0 ;$96
+KEY_F8		EQU	0 ;$97
+KEY_F9		EQU	0 ;$98
+KEY_F10		EQU	0 ;$99
+
+
+; ---------------------------------------------------------------------------
+; -- Screen editor, corresponds to Commodore BASIN
+; ---------------------------------------------------------------------------
+kbd_EditLine:
+		phx
+		phy
+
+		MMU_PUSH_CTRL
+		MMU_ENABLE_IO_PAGE TEXT_CHARS
+		jsr	.body
+		MMU_POP_CTRL
+
+		ply
+		plx
+		rts
+
+.body		lda	kbd_Sending
+		bpl	.send
+
+		; edit line
+
+		jsr	text_EnableCursor
+
+.edit		jsr	kbd_ReadKeyCode
+
+		cmp	#cr
+		beq	.cr
+
+		jsr	text_CharOut
+		bra	.edit
+
+		; return
+.cr		jsr	text_DisableCursor
+
+		ldy	#SCREEN_WIDTH-1
+		lda	#' '
+.find_last	cmp	(text_CurrentLine),y
+		bne	.found_last
+		dey
+		bpl	.find_last
+
+		; empty line
+		ldy	#0
+		bra	.start_send
+.found_last	iny
+
+.start_send	tya
+		jsr	text_SetCursorX
+
+		sty	kbd_LineLength
+		stz	kbd_Sending
+		lda	#0
+
+.send		; send line, A has kbd_Sending value
+		cmp	kbd_LineLength
+		beq	.send_cr
+
+		tay	; save char index
+
+		; increment send state
+		ina
+		sta	kbd_Sending
+
+		lda	(text_CurrentLine),y
+		rts
+
+.send_cr	lda	#$80
+		sta	kbd_Sending
+
+		lda	#cr
+		rts
+
+
+
+; ---------------------------------------------------------------------------
+; -- Try to read key from keyboard
+; -- Returns:
+; --   A - key
+; --   .C - set if no key
+; ---------------------------------------------------------------------------
+kbd_TryReadKey:
+		phx
+		phy
+
+		MMU_PUSH_CTRL
+		MMU_ENABLE_IO_PAGE IO
+		jsr	.internal
+		MMU_POP_CTRL
+
+		ply
+		plx
+		rts
+
+.internal	lda	#PS_STAT_KEMP
+		bit	PS2_STAT
+		bne	.no_key
+
+		lda	PS2_KBD_IN
+		jmp	kbd_HandleScanCode
+
+.no_key		sec		
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Wait and read key code from keyboard
+; -- Returns:
+; --   A - key
+; ---------------------------------------------------------------------------
+kbd_ReadKeyCode:
+		jsr	kbd_TryReadKey
+		bcs	kbd_ReadKeyCode
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Determines if STOP (Escape) was pressed
+; -- Returns:
+; --   .Z - set if pressed
+; ---------------------------------------------------------------------------
+kbd_Stop:
+		jsr	kbd_TryReadKey
+		bcs	.exit
+		cmp	#KEY_ESC
+		rts
+.exit		lda	#$FF
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Handle scan code
+; -- Input:
+; --   A - scan code
+; -- Returns:
+; --   A - key code
+; --   .C - set if no key
+; --
+; -- This routine is extremely hacky but works well enough for our purposes.
+; -- It is by no means robust or suitable for anything other than testing
+; -- and debugging.
+; ---------------------------------------------------------------------------
+kbd_HandleScanCode:
+		tax
+
+		cmp	#$F0
+		beq	.is_break
+
+		ldx	kbd_State
+		beq	.regular
+
+		cpx	#2 ; this is a code in the extended table
+		beq	.got_extended
+
+		; must be 1, this is a break.
+		tax
+		lda	.codes,x
+		cmp	#KEY_SHIFT
+		bne	.not_shift_break
+		stz	kbd_Shift
+.not_shift_break
+		stz	kbd_State
+		sec
+		rts
+
+.got_extended
+		stz	kbd_State
+		sec
+		sbc	#$10
+		tax
+		lda	.codes_ext,x
+		beq	.skip
+		clc
+		rts
+
+.regular	cmp	#$E0
+		bne	.got_regular
+
+		; next one is an extended code
+		ldx	#2
+		stx	kbd_State
+		sec
+		rts
+
+.got_regular	ldx	kbd_Shift
+		beq	.lookup_regular
+		ora	#$80	; go to .codes_shift
+.lookup_regular	tax
+		lda	.codes,x
+		beq	.skip
+		cmp	#KEY_SHIFT
+		bne	.not_shift
+		sta	kbd_Shift	; A is not zero, that's great
+		bra	.skip
+.not_shift	clc
+		rts
+
+.is_break	ldx	#1	; ignore next code
+		stx	kbd_State
+.skip		sec
+		rts
+
+.codes		DB	 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , KEY_TAB ,'`', 0
+		DB	 0 , KEY_ALT , KEY_SHIFT , 0 , KEY_CTRL, 'Q', '1', 0 , 0 , 0 ,'Z','S','A','W','2', 0
+		DB	 0 ,'C','X','D','E','4','3', 0 , 0 ,' ','V','F','T','R','5', 0
+		DB	 0 ,'N','B','H','G','Y','6', 0 , 0 , 0 ,'M','J','U','7','8', 0
+		DB	 0 ,',','K','I','O','0','9', 0 , 0 ,'.','/','L',';','P','-', 0
+		DB	 0 , 0 ,'\'',0 ,'[','=', 0 , 0 , KEY_CAPS_LOCK, KEY_SHIFT, KEY_ENTER,']', 0 ,'\\', 0 , 0
+		DB	 0 , 0 , 0 , 0 , 0 , 0 , KEY_BACK, 0 , 0 ,'1', 0 ,'4','7', 0 , 0 , 0
+		DB	'0','.','2','5','6','8',KEY_ESC, 0 , 0 ,'+','3','-','*','9', 0 , 0
+
+.codes_shift	DB	 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , KEY_TAB ,'~', 0
+		DB	 0 , KEY_ALT , KEY_SHIFT , 0 , KEY_CTRL, 'Q', '!', 0 , 0 , 0 ,'Z','S','A','W','@', 0
+		DB	 0 ,'C','X','D','E','$','#', 0 , 0 ,' ','V','F','T','R','%', 0
+		DB	 0 ,'N','B','H','G','Y','^', 0 , 0 , 0 ,'M','J','U','&','*', 0
+		DB	 0 ,'<','K','I','O',')','(', 0 , 0 ,'>','?','L',':','P','_', 0
+		DB	 0 , 0 ,'"',0 ,'\{','+', 0 , 0 , KEY_CAPS_LOCK, KEY_SHIFT, KEY_ENTER,'\}', 0 ,'|', 0 , 0
+		DB	 0 , 0 , 0 , 0 , 0 , 0 , KEY_BACK, 0 , 0 ,'!', 0 ,'$','&', 0 , 0 , 0
+		DB	')','>','@','%','^','&',KEY_ESC, 0 , 0 ,'+','#','_','*','(', 0 , 0
+
+.codes_ext	DB	 0 , KEY_ALT, 0 , 0 , KEY_CTRL, 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , KEY_OS
+		DB	 0 , 0 , 0 , 0 , 0 , 0 , 0 , KEY_OS, 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0
+		DB	 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0
+		DB	 0 , 0 , 0 , 0 , 0 , 0 ,'/', 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0
+		DB	 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0, KEY_ENTER, 0 , 0 , 0 , 0 , 0
+		DB	 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , KEY_LEFT , 0 , 0 , 0 , 0
+		DB	 0 , 0 , KEY_DOWN , 0 , KEY_RIGHT, KEY_UP , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0

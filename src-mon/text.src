@@ -1,0 +1,407 @@
+SCREEN_WIDTH	EQU	40
+SCREEN_HEIGHT	EQU	30
+
+
+; ---------------------------------------------------------------------------
+; -- Enable and display the text screen
+; ---------------------------------------------------------------------------
+text_Enable::
+		lda	VKY_MSTR_CTRL1
+		and	#~MSTR_CTRL1_FON_SET
+		ora	#MSTR_CTRL1_DBL_Y|MSTR_CTRL1_DBL_X
+		sta	VKY_MSTR_CTRL1
+
+		lda	VKY_MSTR_CTRL0
+		ora	#MSTR_CTRL0_OVRLY|MSTR_CTRL0_TEXT
+		sta	VKY_MSTR_CTRL0
+
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Disable and hide the text screen
+; ---------------------------------------------------------------------------
+text_Disable::
+		lda	VKY_MSTR_CTRL0
+		and	#~(MSTR_CTRL0_OVRLY|MSTR_CTRL0_TEXT)
+		sta	VKY_MSTR_CTRL0
+
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Clear the text screen and reset the cursor
+; ---------------------------------------------------------------------------
+text_ClearScreen:
+		MMU_PUSH_CTRL
+
+		stz	VKY_CRSR_CTRL
+		stz	VKY_CRSR_CHAR
+		stz	VKY_CRSR_X_LO
+		stz	VKY_CRSR_X_HI
+		stz	VKY_CRSR_Y_LO
+		stz	VKY_CRSR_Y_HI
+		stz	text_CursorX
+		stz	text_CursorY
+
+		lda	#>IO_WINDOW
+		stz	text_CurrentLine
+		sta	text_CurrentLine+1
+
+		MMU_ENABLE_IO_PAGE TEXT_CHARS
+		lda	#' '
+		jsr	.fill
+
+		MMU_ENABLE_IO_PAGE TEXT_COLOR
+		lda	#$10
+		jsr	.fill
+
+		MMU_POP_CTRL
+		rts
+
+.fill		stz	r0
+		ldx	#>IO_WINDOW
+		stx	r1
+
+		ldx	#(80*60+255)/256
+		ldy	#0
+.copy		sta	(r0),y
+		iny
+		bne	.copy
+		dex
+		bmi	.done
+		inc	r1
+		bra	.copy
+.done
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Print character in A on screen
+; ---------------------------------------------------------------------------
+text_CharOut:
+		MMU_PUSH_CTRL
+		MMU_ENABLE_IO_PAGE TEXT_CHARS
+
+		cmp	#$20
+		bge	.not_special
+
+		asl
+		tax
+		jsr	.call
+		bra	.done
+
+.not_special	ldy	text_CursorX
+		cpy	#SCREEN_WIDTH
+		bne	.no_line_feed
+
+		jsr	text_NewLine
+		ldy	#0
+
+.no_line_feed	sta	(text_CurrentLine),y
+		iny
+		sty	text_CursorX
+
+		jsr	updateHardwareCursor
+
+.done		MMU_POP_CTRL
+.dummy		rts
+
+.call		jmp	(.vectors,x)
+
+.vectors	DW	.dummy	; 0
+		DW	.dummy	; 1
+		DW	.dummy	; 2
+		DW	.dummy	; 3
+		DW	.dummy	; 4
+		DW	.back	; KEY_BACK
+		DW	.dummy	; 6
+		DW	.dummy	; 7
+		DW	.dummy	; 8
+		DW	.tab	; KEY_TAB
+		DW	text_NewLine	; 10
+		DW	.dummy	; 11
+		DW	.dummy	; 12
+		DW	text_NewLine	; KEY_ENTER
+		DW	.dummy	; 14
+		DW	.dummy	; 15
+		DW	.dummy	; 16
+		DW	.dummy	; 17
+		DW	.dummy	; 18
+		DW	.dummy	; 19
+		DW	.dummy	; 20
+		DW	.dummy	; 21
+		DW	.dummy	; 22
+		DW	.dummy	; 23
+		DW	.dummy	; 24
+		DW	.dummy	; 25
+		DW	.dummy	; 26
+		DW	.dummy	; KEY_ESC
+		DW	text_CursorLeft	; KEY_LEFT
+		DW	text_CursorRight	; KEY_RIGHT
+		DW	text_CursorUp	; KEY_UP
+		DW	text_CursorDown	; KEY_DOWN
+
+.back		jsr	text_CursorLeft
+		ldy	text_CursorX
+		lda	#' '
+		sta	(text_CurrentLine),y
+		rts
+
+.tab		rts
+
+
+
+; ---------------------------------------------------------------------------
+; -- Initialize LUT
+; ---------------------------------------------------------------------------
+text_SetLUT:
+		MMU_PUSH_CTRL
+		MMU_ENABLE_IO_PAGE IO
+
+		; set foreground
+		lda	#$FF
+		ldx	#16*4-1
+.next_f		sta	TXT_FGND_LUT,x
+		dex
+		bpl	.next_f
+
+		; set background
+		ldx	#16*4-1
+.next_b		stz	TXT_BGND_LUT,x
+		dex
+		bpl	.next_b
+
+		MMU_POP_CTRL
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Upload font
+; ---------------------------------------------------------------------------
+text_SetFont:
+		MMU_PUSH_CTRL
+		MMU_ENABLE_IO_PAGE FONT_GLUT
+
+		lda	#<VKY_FONT_0
+		sta	r0
+		lda	#>VKY_FONT_0
+		sta	r1
+
+		lda	#<.font
+		sta	r2
+		lda	#>.font
+		sta	r3
+
+		ldx	#>.font_len
+		ldy	#0
+.copy		lda	(r2),y
+		sta	(r0),y
+		iny
+		bne	.copy
+		inc	r1
+		inc	r3
+		dex
+		bne	.copy
+
+		MMU_POP_CTRL
+		rts
+
+
+.font		INCBIN	"font.bin"
+.font_len	EQU	@-.font
+
+
+; ---------------------------------------------------------------------------
+; -- Enable hardware cursor
+; ---------------------------------------------------------------------------
+text_EnableCursor:
+		MMU_PUSH_CTRL
+		MMU_ENABLE_IO_PAGE IO
+
+		lda	#'_'
+		sta	VKY_CRSR_CHAR
+
+		lda	text_CursorX
+		sta	VKY_CRSR_X_LO
+		stz	VKY_CRSR_X_HI
+
+		lda	text_CursorY
+		sta	VKY_CRSR_Y_LO
+		stz	VKY_CRSR_Y_HI
+
+		lda	#CRSR_ENABLE|CRSR_FLASH_RATE_2
+		sta	VKY_CRSR_CTRL
+
+		MMU_POP_CTRL
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Disable hardware cursor
+; ---------------------------------------------------------------------------
+text_DisableCursor:
+		MMU_PUSH_CTRL
+		MMU_ENABLE_IO_PAGE IO
+
+		stz	VKY_CRSR_CTRL
+
+		MMU_POP_CTRL
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Move cursor left
+; ---------------------------------------------------------------------------
+text_CursorLeft:
+		pha
+
+		lda	text_CursorX
+		bne	.ok
+
+		lda	#SCREEN_WIDTH-1
+		sta	text_CursorX
+		jsr	text_CursorUp
+		bra	.done
+
+.ok		dec	text_CursorX
+
+.done		jsr	updateHardwareCursor
+		pla
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Set cursor x position
+; ---------------------------------------------------------------------------
+text_SetCursorX:
+		sta	text_CursorX
+		jmp	updateHardwareCursor
+
+
+; ---------------------------------------------------------------------------
+; -- Move cursor right
+; ---------------------------------------------------------------------------
+text_CursorRight:
+		pha
+
+		lda	text_CursorX
+		cmp	#SCREEN_WIDTH-1
+		bne	.ok
+
+		stz	text_CursorX
+		jsr	text_CursorDown
+		bra	.done
+
+.ok		inc	text_CursorX
+
+.done		jsr	updateHardwareCursor
+
+		pla
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Cursor up
+; ---------------------------------------------------------------------------
+text_CursorUp:
+		pha
+
+		lda	text_CursorY
+		beq	.done
+
+		dec
+		sta	text_CursorY
+
+		; decrement line pointer
+		lda	text_CurrentLine
+		sec
+		sbc	#SCREEN_WIDTH
+		sta	text_CurrentLine
+		lda	text_CurrentLine+1
+		sbc	#0
+		sta	text_CurrentLine+1
+
+.done		jsr	updateHardwareCursor
+
+		pla
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Cursor down
+; ---------------------------------------------------------------------------
+text_CursorDown:
+		pha
+
+		lda	text_CursorY
+		cmp	#SCREEN_HEIGHT-1
+		bne	.not_end
+
+		jsr	scrollScreenUp
+		bra	.done
+
+.not_end	inc	text_CursorY
+		jsr	updateHardwareCursor
+
+		; increment line pointer
+		lda	text_CurrentLine
+		clc
+		adc	#SCREEN_WIDTH
+		sta	text_CurrentLine
+		lda	text_CurrentLine+1
+		adc	#0
+		sta	text_CurrentLine+1
+
+.done		jsr	updateHardwareCursor
+
+		pla
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Cursor new line
+; ---------------------------------------------------------------------------
+text_NewLine:
+		stz	text_CursorX
+		jsr	text_CursorDown
+
+		; fall through to updateHardwareCursor
+
+updateHardwareCursor:
+		phy
+
+		MMU_PUSH_CTRL
+		MMU_ENABLE_IO_PAGE IO
+
+		lda	text_CursorX
+		sta	VKY_CRSR_X_LO
+		stz	VKY_CRSR_X_HI
+
+		lda	text_CursorY
+		sta	VKY_CRSR_Y_LO
+		stz	VKY_CRSR_Y_HI
+
+		MMU_POP_CTRL
+
+		ply
+		rts
+
+
+scrollScreenUp:
+		MMU_ENABLE_IO_PAGE TEXT_CHARS
+
+		; we end up copying a few too many bytes, but who cares ...
+
+		ldy	#0
+_offset = 0
+		REPT	5
+.copy\@		lda	IO_WINDOW+SCREEN_WIDTH+_offset,y
+		sta	IO_WINDOW+_offset,y
+		iny
+		bne	.copy\@
+_offset = _offset + 256
+		ENDR
+		PURGE	_offset
+
+		rts

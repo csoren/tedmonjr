@@ -1,0 +1,218 @@
+; Copyright (c) 2023 Carsten Elton Sørensen
+; 
+; Permission is hereby granted, free of charge, to any person obtaining a copy
+; of this software and associated documentation files (the "Software"), to deal
+; in the Software without restriction, including without limitation the rights
+; to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+; copies of the Software, and to permit persons to whom the Software is
+; furnished to do so, subject to the following conditions:
+; 
+; The above copyright notice and this permission notice shall be included in all
+; copies or substantial portions of the Software.
+; 
+; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+; IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+; FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+; AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+; LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+; SOFTWARE.
+
+		INCLUDE	"f256.i"
+		INCLUDE "trampolinevectors.i"
+
+		; -- Zero page --
+		RSSET	16
+t0		RB	1
+t1		RB	1
+t2		RB	1
+t3		RB	1
+
+
+		SECTION	"Entry",CODE[$2000]
+Entry::
+		sei
+		cld
+
+		MMU_ENABLE_IO_PAGE 0
+
+		; If this is a 65816, switch pin 3 from an input
+    		; (6502 PHI1-out) to a 1 output (816 ABORTB-in).
+		OPT	mc3
+
+		; Try to put the CPU into 65816 native mode.
+		clc
+		xce             ; NOP on a w65c02
+
+		; Carry still clear if this is a w65c02;
+		; Carry set if an 816 was in emulation mode
+		; (as it would be after a RESET).
+		bcc	.is_6502
+
+		; Switch back to emulation mode.
+		sec
+		xce
+
+		OPT	mc2
+		
+		; Reconfigure CPU pin 3.
+        	lda     #$03	; 2 (DDR) + 1 (logic 1)
+        	sta     $D6B0
+
+.is_6502
+		ldx	#$FF
+		txs
+
+		; Initialize and switch to MMU LUT #0
+		lda	#MMU_EDIT_EN|MMU_EDIT_LUT_0|MMU_ACT_LUT_0
+		sta	MMU_MEM_CTRL
+
+		ldx	#7
+.save		txa
+		sta	MMU_EDIT_BASE,x
+		dex
+		bpl	.save
+
+		stz	MMU_MEM_CTRL
+		stz	MMU_IO_CTRL
+
+		lda	#SYS_CTRL0_POWER_LED|SYS_CTRL0_SD_LED
+		sta	SYS_CTRL0
+
+		; disable and clear all interrupts
+
+		lda	#$FF
+		sta	INT_MASK_0
+		sta	INT_MASK_1
+		sta	INT_MASK_2
+		sta	INT_PENDING_0
+		sta	INT_PENDING_1
+		sta	INT_PENDING_2
+		sta	INT_POLARITY_0
+		sta	INT_POLARITY_1
+		sta	INT_POLARITY_2
+		sta	INT_EDGE_0
+		sta	INT_EDGE_1
+		sta	INT_EDGE_2
+
+		lda	#SYS_CTRL0_POWER_LED|SYS_CTRL0_SD_LED
+		sta	SYS_CTRL0
+
+		jsr	ResetVideo
+		
+		lda	#MSTR_CTRL0_SPRITE|MSTR_CTRL0_GRAPH
+		sta	VKY_MSTR_CTRL0
+		stz	VKY_MSTR_CTRL1
+
+		lda	#7	; bank 7
+		jsr	trampoline_Initialize
+		MONCALL	SetLUT
+		MONCALL	SetFont
+
+		MONCALL	ClearScreen
+		MONCALL	ShowScreen
+
+		jsr	PrintImm
+		DB	"TEDMON test program",13,13,0
+
+	IF 0
+.input_next	MONCALL	EditLine
+.print_next	MONCALL	CharOut
+		bra	.input_next
+	ENDC
+
+		MONCALL	Enter
+
+		FLASH	GREEN
+
+
+ResetVideo:
+		lda	#MSTR_CTRL0_GRAPH
+		sta	VKY_MSTR_CTRL0
+		stz	VKY_MSTR_CTRL1
+
+		stz	VKY_BRDR_CTRL		; No border
+		;lda	#BRDR_ENABLE
+		;sta	VKY_BRDR_CTRL
+		lda	#4
+		sta	VKY_BDR_WIDTH
+		lda	#1
+		sta	VKY_BDR_HEIGHT
+
+		stz	VKY_BKG_BLUE
+		stz	VKY_BKG_GREEN
+		stz	VKY_BKG_RED
+
+		lda	#$80
+		sta	VKY_BDR_BLUE
+		sta	VKY_BDR_GREEN
+		sta	VKY_BDR_RED
+
+		rts
+
+
+; ---------------------------------------------------------------------------
+; -- Print immediate text following return address
+; -- All registers preserved
+; ---------------------------------------------------------------------------
+PrintImm:
+		sty	t0
+
+		ply
+		sty	t2
+		ply
+		sty	t3
+
+		pha
+		phx
+
+		bra	.inc
+
+.loop		lda	(t2)
+		beq	.done
+
+		MONCALL	CharOut
+
+.inc		inc	t2
+		bne	.loop
+		inc	t3
+		bra	.loop
+
+.done		plx
+		pla
+
+		ldy	t3
+		phy
+		ldy	t2
+		phy
+
+		ldy	t0
+		
+		rts
+
+
+
+		SECTION	"Monitor",CODE[$E000],ROOT
+Monitor:	INCBIN	"../monitor.bin"
+
+rtiVector:	rti
+
+
+		SECTION	"Vectors65816",CODE[$FFE4],ROOT
+
+		; 65816 vectors
+		DW	rtiVector	; COP
+		DW	rtiVector	; BRK
+		DW	rtiVector	; ABORT
+		DW	rtiVector	; NMI
+		DW	0		; * unused
+		DW	rtiVector	; IRQ
+
+		SECTION	"Vectors6502",CODE[$FFF4],ROOT
+		DW	rtiVector	; COP
+		DW	0		; * unused
+		DW	rtiVector	; ABORT
+		DW	rtiVector	; NMI
+		DW	Entry		; RESET
+		DW	rtiVector	; IRQ/BRK
+
