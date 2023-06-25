@@ -42,7 +42,7 @@ It is up to the programmer to handle interrupts and enter the monitor at the app
 
 A test program is also provided, the `test.bin` program can be loaded at address `$2000`. It will enter the monitor so the various monitor functions can be tested.
 
-## Functions
+## Monitor functions
 Several functions are available to the programmer:
 
 |Name|Vector|Function|
@@ -96,10 +96,10 @@ See monitor function description for any other parameters.
 Enters the monitor. The monitor will keep running until the user issues the `X` command.
 
 ### SetLUT
-The monitor will assume a working text screen LUT has been set up by the programmer, but if it hasn't, the LUT may be initialized with this call.
+The monitor assumes a working text screen LUT has been set up by the programmer, but if it hasn't, the LUT may be initialized with this call.
 
 ### SetFont
-The monitor will assume a working text screen font has been set up by the programmer, but if it hasn't, an embedded font may be copied to text screen font memory.
+The monitor assumes a working text screen font has been set up by the programmer, but if it hasn't, an embedded font may be copied to text screen font memory by calling this function.
 
 ### ShowScreen
 Enables the text screen on top of all other graphics.
@@ -150,11 +150,11 @@ Returns:
 `A - character or zero if none is available`
 
 ### EditLine
-Returns a line of text from the screen editor. Characters are return and terminated with the `CR` character (`$0C`)
+Returns a line of text from the screen editor. Characters are returned one by one and terminated with the `CR` character (`$0C`)
 
 Returns:
 
 `A - character or $0C when no more characters are available`
 
 # License
-Pointions of this software is covered by the MIT license. The source files to which the license applies are clearly.
+Portions of this software is covered by the MIT license. The source files to which the license applies are clearly.
