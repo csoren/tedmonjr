@@ -114,7 +114,7 @@ Entry::
 		MONCALL	ShowScreen
 
 		jsr	PrintImm
-		DB	"TEDMON test program",13,13,0
+		DB	"TEDMON test program. Press ESC.",13,13,0
 
 
 	IF 0
@@ -122,6 +122,10 @@ Entry::
 .print_next	MONCALL	CharOut
 		bra	.input_next
 	ENDC
+
+.wait		lda	#27
+		MONCALL	EnterIfKey
+		bra	.wait
 
 		MONCALL	Enter
 

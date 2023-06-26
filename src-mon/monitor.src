@@ -48,7 +48,9 @@ MonitorVectors:
 		VECTOR	text_EnableCursor
 		VECTOR	text_DisableCursor
 		VECTOR	kbd_ReadKeyCode
+		VECTOR	kbd_TryReadKey
 		VECTOR	kbd_EditLine
+		VECTOR	EnterIfKey
 
 NMI:		rts
 
@@ -61,6 +63,15 @@ Initialize:
 		stz	mode ; 40 col
 
 		rts
+
+EnterIfKey:
+		sta	t0
+		jsr	kbd_TryReadKey
+		bcs	.exit
+		cmp	t0
+		bne	.exit
+		jmp	call
+.exit		rts
 
 
 		INCLUDE	"monitor0.src"

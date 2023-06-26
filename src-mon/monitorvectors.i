@@ -43,5 +43,6 @@ monitor_HideCursor	RB	MONITOR_VECTOR_SIZE
 monitor_ReadChar	RB	MONITOR_VECTOR_SIZE
 monitor_TryReadChar	RB	MONITOR_VECTOR_SIZE
 monitor_EditLine	RB	MONITOR_VECTOR_SIZE
+monitor_EnterIfKey	RB	MONITOR_VECTOR_SIZE
 
 	ENDC

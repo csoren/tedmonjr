@@ -62,6 +62,7 @@ Several functions are available to the programmer:
 |ReadChar|$18|Read a character from the keyboard (wait)|
 |TryReadChar|$1A|Read a character from the keyboard (return immediatly if none available)
 |EditLine|$1C|Use the full screen editor to return a line of input|
+|EnterIfChar|$1E|Enter the monitor if key pressed|
 
 ## Calling functions
 Functions must be called through the trampoline. The trampoline provides two entry points to the programmer - `Initialize` and `Call`. All monitor functions except Initialize must be called using the `Call` entry point.
@@ -155,6 +156,13 @@ Returns a line of text from the screen editor. Characters are returned one by on
 Returns:
 
 `A - character or $0C when no more characters are available`
+
+### EnterIfChar
+Enters the monitor if the specified character has been input from the keyboard. Returns immediatly if not.
+
+Input:
+
+`A - character`
 
 # License
 Portions of this software is covered by the MIT license. The source files to which the license applies are clearly.
