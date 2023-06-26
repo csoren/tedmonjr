@@ -45,38 +45,60 @@ TrampolineVectors:
 ; --   X - destroyed
 ; ---------------------------------------------------------------------------
 Trampoline:
-		phy
-		php
 		sei
 
 		; save caller's A and X
-		phx
-		jsr	AddByteParameter	; store A
-		pla
-		jsr	AddByteParameter	; store X
+		sta	user_a
+		stx	user_x
+		sty	user_y
 
 		; save caller's IO ctrl register on caller stack
 		lda	MMU_IO_CTRL
 		pha
 
-		ldy	MMU_MEM_CTRL	; keep user's mem ctrl in Y
+		; set monitor slot #7 to user slot #7
+		lda	MMU_MEM_CTRL
+		sta	user_mem_ctrl
+		and	#MMU_ACT_LUT_MASK
+		pha			; store user's LUT for later
 
-		lda	#MMU_ACT_LUT_3	; we want LUT #3
+		asl	#4		; active LUT into edit
+		ora	MMU_MEM_CTRL
+		ora	#MMU_EDIT_EN
+		sta	MMU_MEM_CTRL	; edit user's LUT
+		ldx	MMU_EDIT_BASE+7	; get user's slot #7
+
+		pla			; restore user's LUT
+		ora	#MMU_EDIT_EN|MMU_EDIT_LUT_3	; we want to edit LUT #3
+		sta	MMU_MEM_CTRL	; activate LUT #3
+		stx	MMU_EDIT_BASE+7	; set monitor's slot #7 to user's slot #7
+
+		lda	#MMU_ACT_LUT_3
 		sta	MMU_MEM_CTRL	; activate LUT #3
 
 		; now in monitor land
 
-		lda	params+0
-		ldx	params+1
+		lda	user_a
+		ldx	user_x
+		ldy	user_y
 		jsr	.call
-		stz	param
+		sta	user_a
+		;stx	user_x
+		;sty	user_y
+		php
+		pla
+		sta	user_flags
 
-		sty	MMU_MEM_CTRL
-		ply
-		sty	MMU_IO_CTRL
+		; back to caller
+		lda	user_mem_ctrl
+		sta	MMU_MEM_CTRL
+		pla
+		sta	MMU_IO_CTRL
 
-		plp
-		ply
+		lda	user_flags
+		pha
+		lda	user_a
+		pla	
 		rts
 
 .call		jmp	(MONITOR_VECTOR_BASE,x)
@@ -104,7 +126,7 @@ Initialize:
 		sta	MMU_MEM_CTRL
 
 		sty	MMU_EDIT_BASE+0
-		sty	MMU_EDIT_BASE+7
+		stz	MMU_EDIT_BASE+7
 
 		; restore user config
 		pla
@@ -119,124 +141,69 @@ Initialize:
 
 
 ; ---------------------------------------------------------------------------
-; -- Add byte to parameter block
-; -- Input:
-; --   A - byte
-; -- Note:
-; --   Destroys X and Y
-; ---------------------------------------------------------------------------
-AddByteParameter:
-		; keep user's mem ctrl in X
-		ldx	MMU_MEM_CTRL
-
-		; switch to LUT #3
-		ldy	#MMU_ACT_LUT_3
-		sty	MMU_MEM_CTRL
-
-		; we're now in monitor land, store A in parameter block
-		ldy	param
-		sta	params,y
-		inc	param
-
-		; back to userland
-		stx	MMU_MEM_CTRL
-		rts
-
-
-; ---------------------------------------------------------------------------
 ; -- Long JSR and JMP
 ; ---------------------------------------------------------------------------
 LongJump:
 		lda	#$4C	; JMP abs
 		bra	LongJsr\.entry
 LongJsr:
-		tsx
-		stx	monsp
 		lda	#$20	; JSR abs
-.entry		ldx	#13
-		jsr	.load
+.entry		
+		sta	.jump	; opcode
+		lda	pcl
+		sta	.jump+1
+		lda	pch
+		sta	.jump+2
 
-		lda	sp
-		ldx	#1
-		jsr	.load
-		lda	flgs
-		ldx	#4
-		jsr	.load
-		lda	xr
-		ldx	#7
-		jsr	.load
-		lda	yr
-		ldx	#9
-		jsr	.load
-		lda	acc
-		ldx	#11
-		jsr	.load
-
-		ldx	pcl
-		ldy	pch
+		;tsx
+		;stx	monsp
 
 		lda	pcb
 		sta	MMU_MEM_CTRL	; activate destination bank
 
-		stx	.jump+14
-		sty	.jump+15
+		;ldx	sp
+		;txs
+		lda	flgs
+		pha
 
-.jump		ldx	#$FF	; SP (1)
-		txs		; 2
-		lda	#$FF	; SR (4)
-		pha		; 5
-		ldx	#$FF	; X (7)
-		ldy	#$FF	; Y (9)
-		lda	#$FF	; A (11)
-		plp		; 12
+		ldx	xr
+		ldy	yr
+		lda	acc
 
-		jsr	$FFFF	; JSR (13), PC (14, 15)
-
-
-		php
-		phx
-		phy
-
-		; store SP, A
-		tsx
-		ldy	#MMU_ACT_LUT_3
-		sty	MMU_MEM_CTRL
-		sta	acc
-		stx	sp
-		ldy	pcb
-		sty	MMU_MEM_CTRL
-
-		; store X, Y
-		ply
-		plx
-
-		lda	#MMU_ACT_LUT_3
-		sta	MMU_MEM_CTRL
-
-		stx	xr
-		stx	yr
-
-		; store SR
-		ldy	pcb
-		sty	MMU_MEM_CTRL
 		plp
 
+.jump		jsr	$FFFF
+
+		sta	user_a
+		php
+		pla
+		sta	user_flags
+
 		lda	#MMU_ACT_LUT_3
-		sta	MMU_MEM_CTRL
-		stx	flgs
+		sta	MMU_MEM_CTRL	; activate monitor bank
 
-		ldx	monsp
-		txs
+		stx	xr
+		sty	yr
+		lda	user_a
+		sta	acc
+		lda	user_flags
+		sta	flgs
+
+		;tsx
+		;stx	sp
+
+		;ldx	monsp
+		;txs
 
 		rts
 
-.load		ldy	pcb
-		sty	MMU_MEM_CTRL
 
-		sta	.jump,x
 
-		ldy	#MMU_ACT_LUT_3
-		sty	MMU_MEM_CTRL
-
-		rts
-
+; ---------------------------------------------------------------------------
+; -- Variables
+; ---------------------------------------------------------------------------
+user_a		DB	0
+user_x		DB	0
+user_y		DB	0
+user_flags	DB	0
+user_mem_ctrl	DB	0

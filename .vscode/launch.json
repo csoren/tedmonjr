@@ -5,10 +5,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "F5 Anything: Custom Command",
+            "name": "Run test program",
             "type": "f5anything",
             "request": "launch",
-            "preLaunchTask": "Run test program",
+            "preLaunchTask": "Build test program",
             "command": "just run"
         }
     ]

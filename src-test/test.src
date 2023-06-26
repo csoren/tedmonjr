@@ -104,8 +104,9 @@ Entry::
 		sta	VKY_MSTR_CTRL0
 		stz	VKY_MSTR_CTRL1
 
-		lda	#7	; bank 7
+		lda	#4	; bank 4
 		jsr	trampoline_Initialize
+
 		MONCALL	SetLUT
 		MONCALL	SetFont
 
@@ -114,6 +115,7 @@ Entry::
 
 		jsr	PrintImm
 		DB	"TEDMON test program",13,13,0
+
 
 	IF 0
 .input_next	MONCALL	EditLine
@@ -192,8 +194,11 @@ PrintImm:
 
 
 
-		SECTION	"Monitor",CODE[$E000],ROOT
+		SECTION	"Monitor",CODE[$8000],ROOT
 Monitor:	INCBIN	"../monitor.bin"
+
+		SECTION	"Trampoline",CODE[TRAMPOLINE_BASE],ROOT
+Trampoline:	INCBIN	"../trampoline.bin"
 
 rtiVector:	rti
 

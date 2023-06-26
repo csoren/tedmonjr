@@ -59,7 +59,6 @@ Initialize:
 		stz	kbd_State
 		stz	kbd_Shift
 		stz	mode ; 40 col
-		stz	param
 
 		rts
 
@@ -78,5 +77,5 @@ Initialize:
 		INCLUDE "replacements.src"
 
 
-		SECTION	"Trampoline",CODE[TRAMPOLINE_BASE]
+		SECTION	"Trampoline",CODE[TRAMPOLINE_BASE&$1FFF]
 		INCBIN	"../trampoline.bin"

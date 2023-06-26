@@ -51,12 +51,5 @@ text_CursorY RB 1
 kbd_Sending	RB 1	; %0xxxxxxx = sending
 kbd_LineLength	RB 1
 
-param	RB 1
-params	RB 4
-
-mmu_a	RB 1
-mmu_x	RB 1
-mmu_y	RB 1
-
 
 	ENDC
